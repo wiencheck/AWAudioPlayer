@@ -53,17 +53,17 @@ class GreatPlayer: NSObject {
     public var indexOfNowPlayingItem = 0
     
     /*
-        Currently used object of AVAudioPlayer class
-        typically you should not use it as most use cases are handled by GreatPlayer,
-        however it is exposed in case you would like to access some strange properties of AVAudioPlayer
+     Currently used object of AVAudioPlayer class
+     typically you should not use it as most use cases are handled by GreatPlayer,
+     however it is exposed in case you would like to access some strange properties of AVAudioPlayer
      */
     public var player: AVAudioPlayer! {
         return playerFlag == 1 ? player1 : player2
     }
     
     /*
-        "Is it playing or not?"
-        source, Apple's documentation
+     "Is it playing or not?"
+     source, Apple's documentation
      */
     public var isPlaying: Bool {
         return player.isPlaying
@@ -142,6 +142,7 @@ class GreatPlayer: NSObject {
         UIApplication.shared.endReceivingRemoteControlEvents()
         activatePlaybackCommands(false)
         setSession(active: false)
+        cc.nowPlayingInfo = nil
     }
     
     private var timeTimer: Timer!
@@ -220,22 +221,43 @@ class GreatPlayer: NSObject {
     }
     
     public func skipToNextTrack() {
-        if shouldPlayFromCustomQueue {
+        if !customQueue.isEmpty {
             playCustomItemAtIndex(customIndex + 1)
-        } else {
+        } else if customIndex + 1 >= customQueue.count && !customQueue.isEmpty {
+            customQueue.removeAll()
+            customIndex = 0
             setItemAtIndex(indexOfNowPlayingItem + 1)
+        } else {
+            if indexOfNowPlayingItem + 1 >= queue.count {
+                // go back to beginning
+                setItemAtIndex(0)
+            } else {
+                setItemAtIndex(indexOfNowPlayingItem + 1)
+            }
         }
         shouldReduceGap = false
-    }
-    
-    public func skipToBeginning() {
-        player.currentTime = 0
     }
     
     public func skipToPrevious() {
         if currentPlaybackTime > 3.0 {
             skipToBeginning()
+        } else {
+            if customIndex > 0 && !customQueue.isEmpty {
+                
+            } else if customIndex == 0 && !customQueue.isEmpty {
+                
+            } else {
+                if indexOfNowPlayingItem == 0 {
+                    setItemAtIndex(queue.count - 1)
+                } else {
+                    setItemAtIndex(indexOfNowPlayingItem - 1)
+                }
+            }
         }
+    }
+    
+    public func skipToBeginning() {
+        player.currentTime = 0
     }
     
     func playCustomItemAtIndex(_ index: Int) {
@@ -381,7 +403,7 @@ class GreatPlayer: NSObject {
     }
     
     private func startNowPlayingInfoUpdates() {
-        if infoTimer == nil { infoTimer = Timer.scheduledTimer(withTimeInterval: 0.7, repeats: true, block: { (_) in
+        if infoTimer == nil { infoTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true, block: { (_) in
             if self.isPlaying { self.updateNowPlayingInfo() }
         }) }
         if !infoTimer.isValid { infoTimer.fire() }
@@ -408,7 +430,7 @@ class GreatPlayer: NSObject {
             print(err.localizedDescription)
         }
     }
-
+    
     // MARK: Remote control events
     
     private func activatePlaybackCommands(_ enable: Bool){
@@ -476,29 +498,13 @@ class GreatPlayer: NSObject {
 extension GreatPlayer: AVAudioPlayerDelegate {
     
     func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
-//        if shouldReduceGap {
-//            self.player = playerFlag == 1 ? player1 : player2
-//        }
         shouldReduceGap = false
         print("Shouldgap = \(shouldReduceGap)")
-//        if shouldReduceGap {
-//            self.player = playerFlag == 1 ? player1 : player2
-//            shouldReduceGap = false
-//        }
-//        if player == self.player {
-//            print("player finished")
-//        }
         if player == self.player1 {
             print("player1 finished")
         } else if player == self.player2 {
             print("player2 finished")
         }
-//         else {
-//            if shouldSkip {
-//                skipToNextTrack()
-//            }
-//        }
-//        shouldSkip = true
     }
     
 }
@@ -516,6 +522,11 @@ extension Notification.Name {
 
 extension MPMediaItem {
     
+    /*
+     For some strange reason value(forProperty: MPMediaItemPropertyLyrics) often returns nothing,
+     this can be seen even in Apple's own music app,
+     below code has 100% success rate
+     */
     var lyrics: String? {
         guard let url = self.assetURL else { return nil }
         let ass = AVAsset(url: url)
